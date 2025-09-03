@@ -1,17 +1,17 @@
-
 <!DOCTYPE html>
 <html lang="nl">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mini CRM – Leads</title>
+  <title>Leads CRM – Firebase</title>
   <style>
-    :root{ --bg:#f6f7fb; --card:#fff; --ink:#111; --muted:#666; --line:#e5e7eb; --brand:#0ea5a3; --danger:#ef4444; }
-    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;background:var(--bg);color:var(--ink)}
-    header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0}
+    :root{ --bg:#f6f7fb; --card:#fff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --brand:#0ea5a3; --danger:#ef4444; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;background:var(--bg);color:var(--ink)}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
     h1{font-size:18px;margin:0}
     main{max-width:1100px;margin:18px auto;padding:0 16px}
-    .row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px}
+    .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
     .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
     input,select,textarea,button{font:inherit;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
     button{background:var(--brand);color:#fff;border:none;cursor:pointer}
@@ -27,13 +27,27 @@
     .grid input,.grid select,.grid textarea{width:100%}
     .grid textarea{grid-column:span 6;min-height:80px;resize:vertical}
     .actions{display:flex;gap:6px}
+    .hidden{display:none}
+    /* Auth overlay */
+    #authOverlay{position:fixed;inset:0;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;z-index:10}
+    #authCard{max-width:420px;width:92%;text-align:center}
   </style>
 </head>
 <body>
+  <div id="authOverlay" class="hidden">
+    <div id="authCard" class="card">
+      <h2 style="margin-top:0">Inloggen vereist</h2>
+      <p class="muted">Log in om leads te bekijken en te bewerken.</p>
+      <div class="row" style="justify-content:center;margin-top:8px">
+        <button id="btnGoogleLogin">Log in met Google</button>
+      </div>
+    </div>
+  </div>
+
   <header>
-    <h1>Mini CRM – Leads</h1>
+    <h1>Leads CRM – Firebase</h1>
     <div class="row">
-      <input id="search" placeholder="Zoek (naam, email, bedrijf, notities)..." />
+      <input id="search" placeholder="Zoek (naam, email, bedrijf, notities)…" />
       <select id="stageFilter">
         <option value="">Alle fases</option>
         <option>Nieuw</option>
@@ -45,11 +59,15 @@
       </select>
       <button id="btnRefresh" class="secondary">Verversen</button>
     </div>
-    <button id="btnNew">+ Nieuwe lead</button>
+    <div class="row">
+      <span id="userEmail" class="muted"></span>
+      <button id="btnNew">+ Nieuwe lead</button>
+      <button id="btnLogout" class="secondary">Uitloggen</button>
+    </div>
   </header>
 
   <main>
-    <section class="card" id="formCard" style="display:none">
+    <section class="card hidden" id="formCard">
       <h3 id="formTitle" class="muted">Nieuwe lead</h3>
       <div class="grid">
         <div>
@@ -93,7 +111,7 @@
       <table id="leadTable">
         <thead>
           <tr>
-            <th style="width:110px">Aangemaakt</th>
+            <th style="width:120px">Aangemaakt</th>
             <th>Naam</th>
             <th>Bedrijf</th>
             <th>Email</th>
@@ -109,124 +127,189 @@
     </section>
   </main>
 
-<script>
-const API = 'api.php';
+  <script type="module">
+    // ===== Firebase v10 (modular) via CDN =====
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
+    import { getFirestore, collection, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, orderBy, where, doc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
 
-const $ = (sel) => document.querySelector(sel);
-const tbody = document.querySelector('#leadTable tbody');
+    // ---- 1) VUL JE EIGEN FIREBASE CONFIG HIER IN ----
+    const firebaseConfig = {
+      apiKey: "AIzaSyDWjt0YeuEhUCMMOKToGUhjq21K8HlZ8Fk",
+      authDomain: "rock-f5937.firebaseapp.com",
+      projectId: "rock-f5937",
+      storageBucket: "rock-f5937.firebasestorage.app",
+      messagingSenderId: "1066836195707",
+      appId: "1:1066836195707:web:153c8721f8cf0510af65de",
+      measurementId: "G-SLZXLRZMCG"
+    };
 
-function fmtDate(dstr){
-  const d = new Date(dstr);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
-}
+    // Init
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
 
-async function listLeads(){
-  const q = encodeURIComponent($('#search').value.trim());
-  const stage = encodeURIComponent($('#stageFilter').value);
-  const url = `${API}?search=${q}&stage=${stage}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  renderTable(data);
-}
+    // UI helpers
+    const $ = (sel) => document.querySelector(sel);
+    const tbody = document.querySelector('#leadTable tbody');
+    const overlay = $('#authOverlay');
+    const userEmail = $('#userEmail');
 
-function renderTable(rows){
-  tbody.innerHTML = '';
-  if (!rows.length){ $('#emptyState').style.display='block'; return; }
-  $('#emptyState').style.display='none';
-  for (const r of rows){
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${fmtDate(r.created_at)}</td>
-      <td><strong>${escapeHtml(r.name||'')}</strong></td>
-      <td>${escapeHtml(r.company||'')}</td>
-      <td>${escapeHtml(r.email||'')}</td>
-      <td>${escapeHtml(r.phone||'')}</td>
-      <td>${escapeHtml(r.stage||'')}</td>
-      <td>${escapeHtml(r.notes||'')}</td>
-      <td class="actions">
-        <button onclick='editLead(${r.id})' class="secondary">Bewerk</button>
-        <button onclick='removeLead(${r.id})' class="danger">Verwijder</button>
-      </td>`;
-    tbody.appendChild(tr);
-  }
-}
+    function show(el){ el.classList.remove('hidden'); }
+    function hide(el){ el.classList.add('hidden'); }
 
-function escapeHtml(s){
-  return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
+    function fmtDate(ts){
+      if (!ts) return '';
+      const d = ts.toDate ? ts.toDate() : new Date(ts);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    }
+    function escapeHtml(s){
+      return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]));
+    }
 
-function showForm(edit=false){
-  $('#formCard').style.display='block';
-  $('#formTitle').textContent = edit ? 'Lead bewerken' : 'Nieuwe lead';
-}
-function hideForm(){ $('#formCard').style.display='none'; clearForm(); }
-function clearForm(){
-  $('#f_id').value='';
-  $('#f_name').value='';
-  $('#f_company').value='';
-  $('#f_email').value='';
-  $('#f_phone').value='';
-  $('#f_stage').value='Nieuw';
-  $('#f_notes').value='';
-}
+    // Auth
+    const provider = new GoogleAuthProvider();
+    $('#btnGoogleLogin').addEventListener('click', async () => {
+      await signInWithPopup(auth, provider);
+    });
+    $('#btnLogout').addEventListener('click', async () => { await signOut(auth); });
 
-async function saveLead(){
-  const id = $('#f_id').value;
-  const payload = {
-    name: $('#f_name').value.trim(),
-    company: $('#f_company').value.trim(),
-    email: $('#f_email').value.trim(),
-    phone: $('#f_phone').value.trim(),
-    stage: $('#f_stage').value,
-    notes: $('#f_notes').value.trim(),
-  };
-  if (!payload.name){ alert('Naam is verplicht'); return; }
+    let unsub = null; // snapshot unsub function
+    let currentUser = null;
 
-  let res;
-  if (!id){
-    res = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-  } else {
-    res = await fetch(`${API}?id=${encodeURIComponent(id)}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-  }
-  const data = await res.json();
-  if (!res.ok){ alert(data.error || 'Onbekende fout'); return; }
-  hideForm();
-  listLeads();
-}
+    onAuthStateChanged(auth, async (user) => {
+      currentUser = user;
+      if (!user){
+        userEmail.textContent = '';
+        show(overlay);
+        clearTable();
+        if (unsub) { unsub(); unsub = null; }
+        return;
+      }
+      hide(overlay);
+      userEmail.textContent = user.email || '';
+      startLiveQuery();
+    });
 
-async function editLead(id){
-  // Fetch single by GET and filter client-side; or list and find.
-  const res = await fetch(API);
-  const all = await res.json();
-  const r = all.find(x => x.id == id);
-  if (!r){ alert('Lead niet gevonden'); return; }
-  $('#f_id').value = r.id;
-  $('#f_name').value = r.name || '';
-  $('#f_company').value = r.company || '';
-  $('#f_email').value = r.email || '';
-  $('#f_phone').value = r.phone || '';
-  $('#f_stage').value = r.stage || 'Nieuw';
-  $('#f_notes').value = r.notes || '';
-  showForm(true);
-}
+    // Live query (stage filter). Search is client-side.
+    async function startLiveQuery(){
+      if (unsub) { unsub(); unsub = null; }
+      const stage = $('#stageFilter').value;
+      const colRef = collection(db, 'leads');
+      const baseQ = stage ? query(colRef, where('stage','==',stage), orderBy('created_at','desc'))
+                          : query(colRef, orderBy('created_at','desc'));
+      unsub = onSnapshot(baseQ, (snap) => {
+        const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderTable(rows);
+      });
+    }
 
-async function removeLead(id){
-  if (!confirm('Verwijderen? Dit kan niet ongedaan worden gemaakt.')) return;
-  const res = await fetch(`${API}?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-  const data = await res.json();
-  if (!res.ok){ alert(data.error || 'Verwijderen mislukt'); return; }
-  listLeads();
-}
+    function clearTable(){ tbody.innerHTML=''; $('#emptyState').style.display='block'; }
 
-$('#btnNew').addEventListener('click', () => { clearForm(); showForm(false); });
-$('#btnCancel').addEventListener('click', hideForm);
-$('#btnSave').addEventListener('click', saveLead);
-$('#btnRefresh').addEventListener('click', listLeads);
-$('#search').addEventListener('input', () => { listLeads(); });
-$('#stageFilter').addEventListener('change', listLeads);
+    function renderTable(rows){
+      const term = $('#search').value.trim().toLowerCase();
+      const filtered = term ? rows.filter(r => {
+        return ['name','company','email','phone','notes']
+          .some(k => (r[k]||'').toString().toLowerCase().includes(term));
+      }) : rows;
 
-listLeads();
-</script>
+      tbody.innerHTML = '';
+      if (!filtered.length){ $('#emptyState').style.display='block'; return; }
+      $('#emptyState').style.display='none';
+
+      for (const r of filtered){
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${fmtDate(r.created_at)}</td>
+          <td><strong>${escapeHtml(r.name||'')}</strong></td>
+          <td>${escapeHtml(r.company||'')}</td>
+          <td>${escapeHtml(r.email||'')}</td>
+          <td>${escapeHtml(r.phone||'')}</td>
+          <td>${escapeHtml(r.stage||'')}</td>
+          <td>${escapeHtml(r.notes||'')}</td>
+          <td class="actions">
+            <button class="secondary" data-edit="${r.id}">Bewerk</button>
+            <button class="danger" data-del="${r.id}">Verwijder</button>
+          </td>`;
+        tbody.appendChild(tr);
+      }
+    }
+
+    // Form helpers
+    function showForm(edit=false){ show($('#formCard')); $('#formTitle').textContent = edit ? 'Lead bewerken' : 'Nieuwe lead'; }
+    function hideForm(){ hide($('#formCard')); clearForm(); }
+    function clearForm(){
+      $('#f_id').value='';
+      $('#f_name').value='';
+      $('#f_company').value='';
+      $('#f_email').value='';
+      $('#f_phone').value='';
+      $('#f_stage').value='Nieuw';
+      $('#f_notes').value='';
+    }
+
+    async function saveLead(){
+      const id = $('#f_id').value;
+      const payload = {
+        name: $('#f_name').value.trim(),
+        company: $('#f_company').value.trim() || null,
+        email: $('#f_email').value.trim() || null,
+        phone: $('#f_phone').value.trim() || null,
+        stage: $('#f_stage').value,
+        notes: $('#f_notes').value.trim() || null,
+        created_at: serverTimestamp(),
+        created_by: currentUser ? currentUser.uid : null
+      };
+      if (!payload.name){ alert('Naam is verplicht'); return; }
+
+      if (!id){
+        await addDoc(collection(db,'leads'), payload);
+      } else {
+        const upd = { ...payload };
+        delete upd.created_at; // laat created_at staan
+        await updateDoc(doc(db,'leads', id), upd);
+      }
+      hideForm();
+    }
+
+    async function editLead(id){
+      // Geen aparte fetch nodig; we lezen laatste snapshot tabelwaarden in
+      // Simpelste: haal eenmalig document op
+      const q = query(collection(db,'leads'));
+      const snap = await getDocs(q);
+      const found = snap.docs.find(d => d.id === id);
+      if (!found){ alert('Lead niet gevonden'); return; }
+      const r = { id: found.id, ...found.data() };
+      $('#f_id').value = r.id;
+      $('#f_name').value = r.name || '';
+      $('#f_company').value = r.company || '';
+      $('#f_email').value = r.email || '';
+      $('#f_phone').value = r.phone || '';
+      $('#f_stage').value = r.stage || 'Nieuw';
+      $('#f_notes').value = r.notes || '';
+      showForm(true);
+    }
+
+    async function removeLead(id){
+      if (!confirm('Verwijderen? Dit kan niet ongedaan worden gemaakt.')) return;
+      await deleteDoc(doc(db,'leads', id));
+    }
+
+    // Events
+    $('#btnNew').addEventListener('click', () => { clearForm(); showForm(false); });
+    $('#btnCancel').addEventListener('click', hideForm);
+    $('#btnSave').addEventListener('click', saveLead);
+    $('#btnRefresh').addEventListener('click', startLiveQuery);
+    $('#search').addEventListener('input', () => { startLiveQuery(); });
+    $('#stageFilter').addEventListener('change', startLiveQuery);
+
+    // Delegated actions (edit/delete)
+    tbody.addEventListener('click', (ev) => {
+      const t = ev.target;
+      if (t.matches('[data-edit]')) editLead(t.getAttribute('data-edit'));
+      if (t.matches('[data-del]')) removeLead(t.getAttribute('data-del'));
+    });
+  </script>
 </body>
 </html>
