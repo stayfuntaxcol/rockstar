@@ -31,6 +31,11 @@
     /* Auth overlay */
     #authOverlay{position:fixed;inset:0;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;z-index:10}
     #authCard{max-width:520px;width:92%;text-align:center}
+    /* Diagnostics */
+    #diag{font-size:12px;}
+    #diag pre{background:#f3f4f6;padding:8px;border-radius:8px;overflow:auto;max-height:180px}
+    #diag .ok{color:#0b7a55}
+    #diag .err{color:#b00020}
   </style>
 </head>
 <body>
@@ -66,6 +71,17 @@
         <option>Verloren</option>
       </select>
       <button id="btnRefresh" class="secondary">Verversen</button>
+      <details id="diag" class="right">
+        <summary>Diagnostics</summary>
+        <div class="card" style="margin-top:8px">
+          <div class="row" style="gap:8px">
+            <button id="btnTestRead" class="secondary">Test: Read</button>
+            <button id="btnTestQuery" class="secondary">Test: Query created_at</button>
+          </div>
+          <div id="diagOut" style="margin-top:8px"></div>
+          <pre id="diagErr" class="err hidden"></pre>
+        </div>
+      </details>
     </div>
     <div class="row">
       <span id="userEmail" class="muted"></span>
@@ -161,7 +177,9 @@
       orderBy,
       where,
       doc,
-      getDocs
+      getDoc,
+      getDocs,
+      limit
     } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
 
     // ---- Firebase CONFIG (jouw project) ----
@@ -169,7 +187,7 @@
       apiKey: "AIzaSyDWjt0YeuEhUCMMOKToGUhjq21K8HlZ8Fk",
       authDomain: "rock-f5937.firebaseapp.com",
       projectId: "rock-f5937",
-      storageBucket: "rock-f5937.firebasestorage.app",
+      storageBucket: "rock-f5937.appspot.com",
       messagingSenderId: "1066836195707",
       appId: "1:1066836195707:web:153c8721f8cf0510af65de",
       measurementId: "G-SLZXLRZMCG"
@@ -187,6 +205,8 @@
     const userEmail = $('#userEmail');
     const authMsg = $('#authMsg');
     const emailInput = $('#emailInput');
+    const diagOut = $('#diagOut');
+    const diagErr = $('#diagErr');
 
     function fmtDate(ts){
       if (!ts) return '';
@@ -197,50 +217,40 @@
     function escapeHtml(s){
       return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]));
     }
+    function showErr(e){
+      console.error(e);
+      if (!diagErr) return;
+      diagErr.classList.remove('hidden');
+      diagErr.textContent = (e?.code? e.code+': ' : '') + (e?.message || e);
+    }
+    function clearErr(){ if (diagErr){ diagErr.textContent=''; diagErr.classList.add('hidden'); } }
 
-    // AUTH
+    // ===== AUTH =====
     const provider = new GoogleAuthProvider();
 
-    // Redirect-result verwerken ná terugkeer van Google
-    getRedirectResult(auth).catch((e) => {
-      if (authMsg) authMsg.textContent = (e?.code ? `${e.code}: ` : '') + (e?.message || 'Login fout');
-      console.error(e);
-    });
+    getRedirectResult(auth).catch(showErr);
 
-    // Google login met redirect (omzeilt popup block)
-    document.querySelector('#btnGoogleLogin').addEventListener('click', async () => {
+    $('#btnGoogleLogin').addEventListener('click', async () => {
       try { await signInWithRedirect(auth, provider); }
-      catch(e){ if (authMsg) authMsg.textContent = (e?.code? e.code+': ' : '') + (e?.message||'Google login mislukt'); }
+      catch(e){ authMsg.textContent = e?.message || 'Google login mislukt'; showErr(e); }
     });
 
-    // Wachtwoordloze e‑mail link versturen
-    document.querySelector('#btnEmailLink').addEventListener('click', async () => {
-      if (authMsg) authMsg.textContent = '';
-      const btn = document.querySelector('#btnEmailLink');
+    $('#btnEmailLink').addEventListener('click', async () => {
+      authMsg.textContent = '';
+      const btn = $('#btnEmailLink');
       const email = (emailInput?.value || '').trim();
-      if (!email){ if (authMsg) authMsg.textContent = 'Vul een geldig e-mailadres in.'; return; }
-
-      // Disable + spinner text zodat UI niet 'vast' voelt
-      if (btn){ btn.disabled = true; const old = btn.textContent; btn.textContent = 'Bezig…';
-        try{
-          // Gebruik de huidige live URL als return URL (GitHub Pages subpaths OK)
-          const backUrl = new URL(window.location.href); backUrl.search=''; backUrl.hash='';
-          const actionCodeSettings = { url: backUrl.toString(), handleCodeInApp: true };
-
-          await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-          window.localStorage.setItem('emailForSignIn', email);
-          if (authMsg) authMsg.textContent = 'Link verstuurd. Check je e‑mail en open de link op dit apparaat.';
-        }catch(e){
-          console.error(e);
-          if (authMsg) authMsg.textContent = (e?.code? e.code+': ' : '') + (e?.message || 'Versturen van link mislukt');
-          // Veelvoorkomend: auth/operation-not-allowed (provider uit), auth/unauthorized-domain (domain niet geautoriseerd), auth/invalid-continue-uri (return URL niet toegestaan)
-        } finally {
-          btn.disabled = false; btn.textContent = 'Stuur login‑link';
-        }
-      }
+      if (!email){ authMsg.textContent = 'Vul een geldig e-mailadres in.'; return; }
+      if (btn){ btn.disabled = true; btn.textContent = 'Bezig…'; }
+      try{
+        const backUrl = new URL(window.location.href); backUrl.search=''; backUrl.hash='';
+        const actionCodeSettings = { url: backUrl.toString(), handleCodeInApp: true };
+        await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+        window.localStorage.setItem('emailForSignIn', email);
+        authMsg.textContent = 'Link verstuurd. Check je e‑mail en open de link op dit apparaat.';
+      }catch(e){ authMsg.textContent = e?.message || 'Versturen van link mislukt'; showErr(e); }
+      finally{ if (btn){ btn.disabled=false; btn.textContent='Stuur login‑link'; } }
     });
 
-    // E‑maillink afhandelen als we via link landen
     (async function handleEmailLink(){
       try{
         if (isSignInWithEmailLink(auth, window.location.href)){
@@ -249,51 +259,76 @@
           await signInWithEmailLink(auth, email, window.location.href);
           window.localStorage.removeItem('emailForSignIn');
         }
-      } catch(e){ if (authMsg) authMsg.textContent = (e?.code? e.code+': ' : '') + (e?.message || 'Inloggen via e‑mail mislukt'); }
+      } catch(e){ authMsg.textContent = e?.message || 'Inloggen via e‑mail mislukt'; showErr(e); }
     })();
 
-    // Auth-state → app tonen/verbergen
     let unsub = null;
     let currentUser = null;
     onAuthStateChanged(auth, async (user) => {
       currentUser = user;
       if (!user){
         userEmail.textContent = '';
-        document.querySelector('#authOverlay').style.display = 'flex';
+        overlay.style.display = 'flex';
         clearTable();
         if (unsub) { unsub(); unsub = null; }
         return;
       }
-      document.querySelector('#authOverlay').style.display = 'none';
+      overlay.style.display = 'none';
       userEmail.textContent = user.email || '';
       startLiveQuery();
     });
 
-    // DATA (Firestore)
+    // ===== DATA (Firestore) =====
+    // Robust query: probeer server-sort op created_at; val terug op client-sort
     async function startLiveQuery(){
+      clearErr();
       if (unsub) { unsub(); unsub = null; }
-      const stage = document.querySelector('#stageFilter').value;
+      const stageVal = $('#stageFilter').value;
       const colRef = collection(db, 'leads');
-      const baseQ = stage ? query(colRef, where('stage','==',stage), orderBy('created_at','desc'))
-                          : query(colRef, orderBy('created_at','desc'));
-      unsub = onSnapshot(baseQ, (snap) => {
-        const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        renderTable(rows);
-      });
+
+      // voorkeur: query met orderBy(created_at)
+      let q1 = stageVal
+        ? query(colRef, where('stage','==',stageVal), orderBy('created_at','desc'), limit(200))
+        : query(colRef, orderBy('created_at','desc'), limit(200));
+
+      // subscribe met error handler en fallback
+      unsub = onSnapshot(q1,
+        (snap) => {
+          const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          renderTable(rows);
+        },
+        (err) => {
+          // Veelvoorkomend: index nodig of veld ontbreekt op sommige docs
+          console.warn('Primary query failed, falling back to client sort', err);
+          showErr(err);
+          // Fallback: zonder orderBy (geen index nodig), daarna client-side sort op created_at
+          let q2 = stageVal ? query(colRef, where('stage','==',stageVal), limit(200))
+                            : query(colRef, limit(200));
+          unsub = onSnapshot(q2, (snap2) => {
+            const rows2 = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
+            rows2.sort((a,b) => {
+              const ta = a.created_at?.toMillis ? a.created_at.toMillis() : (a.created_at? new Date(a.created_at).getTime(): 0);
+              const tb = b.created_at?.toMillis ? b.created_at.toMillis() : (b.created_at? new Date(b.created_at).getTime(): 0);
+              return tb - ta; // desc
+            });
+            renderTable(rows2);
+          }, showErr);
+        }
+      );
     }
 
-    function clearTable(){ tbody.innerHTML=''; document.querySelector('#emptyState').style.display='block'; }
+    function clearTable(){ tbody.innerHTML=''; $('#emptyState').style.display='block'; }
 
     function renderTable(rows){
-      const term = document.querySelector('#search').value.trim().toLowerCase();
+      const term = $('#search').value.trim().toLowerCase();
       const filtered = term ? rows.filter(r => {
         return ['name','company','email','phone','notes']
           .some(k => (r[k]||'').toString().toLowerCase().includes(term));
       }) : rows;
 
       tbody.innerHTML = '';
-      if (!filtered.length){ document.querySelector('#emptyState').style.display='block'; return; }
-      document.querySelector('#emptyState').style.display='none';
+      if (!filtered.length){ $('#emptyState').style.display='block'; return; }
+      $('#emptyState').style.display='none';
 
       for (const r of filtered){
         const tr = document.createElement('tr');
@@ -313,28 +348,28 @@
       }
     }
 
-    // Form helpers
-    function showForm(edit=false){ document.querySelector('#formCard').classList.remove('hidden'); document.querySelector('#formTitle').textContent = edit ? 'Lead bewerken' : 'Nieuwe lead'; }
-    function hideForm(){ document.querySelector('#formCard').classList.add('hidden'); clearForm(); }
+    // ===== FORM =====
+    function showForm(edit=false){ $('#formCard').classList.remove('hidden'); $('#formTitle').textContent = edit ? 'Lead bewerken' : 'Nieuwe lead'; }
+    function hideForm(){ $('#formCard').classList.add('hidden'); clearForm(); }
     function clearForm(){
-      document.querySelector('#f_id').value='';
-      document.querySelector('#f_name').value='';
-      document.querySelector('#f_company').value='';
-      document.querySelector('#f_email').value='';
-      document.querySelector('#f_phone').value='';
-      document.querySelector('#f_stage').value='Nieuw';
-      document.querySelector('#f_notes').value='';
+      $('#f_id').value='';
+      $('#f_name').value='';
+      $('#f_company').value='';
+      $('#f_email').value='';
+      $('#f_phone').value='';
+      $('#f_stage').value='Nieuw';
+      $('#f_notes').value='';
     }
 
     async function saveLead(){
-      const id = document.querySelector('#f_id').value;
+      const id = $('#f_id').value;
       const payload = {
-        name: document.querySelector('#f_name').value.trim(),
-        company: document.querySelector('#f_company').value.trim() || null,
-        email: document.querySelector('#f_email').value.trim() || null,
-        phone: document.querySelector('#f_phone').value.trim() || null,
-        stage: document.querySelector('#f_stage').value,
-        notes: document.querySelector('#f_notes').value.trim() || null,
+        name: $('#f_name').value.trim(),
+        company: $('#f_company').value.trim() || null,
+        email: $('#f_email').value.trim() || null,
+        phone: $('#f_phone').value.trim() || null,
+        stage: $('#f_stage').value,
+        notes: $('#f_notes').value.trim() || null,
         created_at: serverTimestamp(),
         created_by: currentUser ? currentUser.uid : null
       };
@@ -351,17 +386,16 @@
     }
 
     async function editLead(id){
-      const snap = await getDocs(query(collection(db,'leads')));
-      const found = snap.docs.find(d => d.id === id);
-      if (!found){ alert('Lead niet gevonden'); return; }
-      const r = { id: found.id, ...found.data() };
-      document.querySelector('#f_id').value = r.id;
-      document.querySelector('#f_name').value = r.name || '';
-      document.querySelector('#f_company').value = r.company || '';
-      document.querySelector('#f_email').value = r.email || '';
-      document.querySelector('#f_phone').value = r.phone || '';
-      document.querySelector('#f_stage').value = r.stage || 'Nieuw';
-      document.querySelector('#f_notes').value = r.notes || '';
+      const snap = await getDoc(doc(db,'leads', id));
+      if (!snap.exists()){ alert('Lead niet gevonden'); return; }
+      const r = { id: snap.id, ...snap.data() };
+      $('#f_id').value = r.id;
+      $('#f_name').value = r.name || '';
+      $('#f_company').value = r.company || '';
+      $('#f_email').value = r.email || '';
+      $('#f_phone').value = r.phone || '';
+      $('#f_stage').value = r.stage || 'Nieuw';
+      $('#f_notes').value = r.notes || '';
       showForm(true);
     }
 
@@ -370,415 +404,37 @@
       await deleteDoc(doc(db,'leads', id));
     }
 
-    // Events
-    document.querySelector('#btnNew').addEventListener('click', () => { clearForm(); showForm(false); });
-    document.querySelector('#btnCancel').addEventListener('click', hideForm);
-    document.querySelector('#btnSave').addEventListener('click', saveLead);
-    document.querySelector('#btnRefresh').addEventListener('click', startLiveQuery);
-    document.querySelector('#search').addEventListener('input', () => { startLiveQuery(); });
-    document.querySelector('#stageFilter').addEventListener('change', startLiveQuery);
+    // ===== EVENTS =====
+    $('#btnNew').addEventListener('click', () => { clearForm(); showForm(false); });
+    $('#btnCancel').addEventListener('click', hideForm);
+    $('#btnSave').addEventListener('click', saveLead);
+    $('#btnRefresh').addEventListener('click', startLiveQuery);
+    $('#search').addEventListener('input', () => { startLiveQuery(); });
+    $('#stageFilter').addEventListener('change', startLiveQuery);
 
-    // Delegated actions (edit/delete)
     tbody.addEventListener('click', (ev) => {
       const t = ev.target;
       if (t.matches('[data-edit]')) editLead(t.getAttribute('data-edit'));
       if (t.matches('[data-del]')) removeLead(t.getAttribute('data-del'));
     });
 
-    // Logout
-    document.querySelector('#btnLogout').addEventListener('click', async () => { await signOut(auth); });
-  </script>
-</body>
-</html>
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Leads CRM – Firebase (Email Link + Google Redirect)</title>
-  <style>
-    :root{ --bg:#f6f7fb; --card:#fff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --brand:#0ea5a3; --danger:#ef4444; }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;background:var(--bg);color:var(--ink)}
-    header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
-    h1{font-size:18px;margin:0}
-    main{max-width:1100px;margin:18px auto;padding:0 16px}
-    .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
-    input,select,textarea,button{font:inherit;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
-    button{background:var(--brand);color:#fff;border:none;cursor:pointer}
-    button.secondary{background:#fff;color:var(--ink);border:1px solid var(--line)}
-    button.danger{background:var(--danger)}
-    table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
-    th{font-weight:600;background:#fafafa;position:sticky;top:54px}
-    .right{margin-left:auto}
-    .muted{color:var(--muted);font-size:12px}
-    .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
-    .grid label{font-size:12px;color:var(--muted)}
-    .grid input,.grid select,.grid textarea{width:100%}
-    .grid textarea{grid-column:span 6;min-height:80px;resize:vertical}
-    .actions{display:flex;gap:6px}
-    .hidden{display:none}
-    /* Auth overlay */
-    #authOverlay{position:fixed;inset:0;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;z-index:10}
-    #authCard{max-width:520px;width:92%;text-align:center}
-  </style>
-</head>
-<body>
-  <!-- AUTH OVERLAY -->
-  <div id="authOverlay">
-    <div id="authCard" class="card">
-      <h2 style="margin-top:0">Inloggen vereist</h2>
-      <p class="muted">Log in met je e-mail (wachtwoordloos) of met Google.</p>
-      <div class="row" style="flex-direction:column;gap:10px;align-items:stretch;max-width:480px;margin:0 auto">
-        <div class="row" style="gap:8px">
-          <input id="emailInput" type="email" placeholder="jij@voorbeeld.nl" style="flex:1" />
-          <button id="btnEmailLink">Stuur login‑link</button>
-        </div>
-        <div class="row" style="justify-content:center">
-          <button id="btnGoogleLogin">Log in met Google</button>
-        </div>
-        <div class="muted" id="authMsg" style="min-height:18px"></div>
-      </div>
-    </div>
-  </div>
+    $('#btnLogout').addEventListener('click', async () => { await signOut(auth); });
 
-  <header>
-    <h1>Leads CRM – Firebase</h1>
-    <div class="row">
-      <input id="search" placeholder="Zoek (naam, email, bedrijf, notities)…" />
-      <select id="stageFilter">
-        <option value="">Alle fases</option>
-        <option>Nieuw</option>
-        <option>Contact</option>
-        <option>Kwalificatie</option>
-        <option>Offerte</option>
-        <option>Winst</option>
-        <option>Verloren</option>
-      </select>
-      <button id="btnRefresh" class="secondary">Verversen</button>
-    </div>
-    <div class="row">
-      <span id="userEmail" class="muted"></span>
-      <button id="btnNew">+ Nieuwe lead</button>
-      <button id="btnLogout" class="secondary">Uitloggen</button>
-    </div>
-  </header>
-
-  <main>
-    <section class="card hidden" id="formCard">
-      <h3 id="formTitle" class="muted">Nieuwe lead</h3>
-      <div class="grid">
-        <div>
-          <label>Naam *</label>
-          <input id="f_name" required />
-        </div>
-        <div>
-          <label>Bedrijf</label>
-          <input id="f_company" />
-        </div>
-        <div>
-          <label>Email</label>
-          <input id="f_email" type="email" />
-        </div>
-        <div>
-          <label>Telefoon</label>
-          <input id="f_phone" />
-        </div>
-        <div>
-          <label>Fase</label>
-          <select id="f_stage">
-            <option>Nieuw</option>
-            <option>Contact</option>
-            <option>Kwalificatie</option>
-            <option>Offerte</option>
-            <option>Winst</option>
-            <option>Verloren</option>
-          </select>
-        </div>
-        <div class="right muted" style="align-self:end">Velden met * zijn verplicht</div>
-        <textarea id="f_notes" placeholder="Notities"></textarea>
-      </div>
-      <div class="actions" style="margin-top:8px">
-        <button id="btnSave">Opslaan</button>
-        <button id="btnCancel" class="secondary">Annuleren</button>
-      </div>
-      <input type="hidden" id="f_id" />
-    </section>
-
-    <section class="card">
-      <table id="leadTable">
-        <thead>
-          <tr>
-            <th style="width:120px">Aangemaakt</th>
-            <th>Naam</th>
-            <th>Bedrijf</th>
-            <th>Email</th>
-            <th>Telefoon</th>
-            <th style="width:120px">Fase</th>
-            <th>Notities</th>
-            <th style="width:140px">Acties</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-      <div id="emptyState" class="muted" style="display:none;padding:12px">Nog geen leads gevonden.</div>
-    </section>
-  </main>
-
-  <script type="module">
-    // ===== Firebase v10 (modular) via CDN =====
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-    import {
-      getAuth,
-      GoogleAuthProvider,
-      signInWithRedirect,
-      getRedirectResult,
-      signOut,
-      onAuthStateChanged,
-      sendSignInLinkToEmail,
-      isSignInWithEmailLink,
-      signInWithEmailLink
-    } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
-    import {
-      getFirestore,
-      collection,
-      addDoc,
-      updateDoc,
-      deleteDoc,
-      onSnapshot,
-      serverTimestamp,
-      query,
-      orderBy,
-      where,
-      doc,
-      getDocs
-    } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
-
-    // ---- Firebase CONFIG (jouw project) ----
-    const firebaseConfig = {
-      apiKey: "AIzaSyDWjt0YeuEhUCMMOKToGUhjq21K8HlZ8Fk",
-      authDomain: "rock-f5937.firebaseapp.com",
-      projectId: "rock-f5937",
-      storageBucket: "rock-f5937.firebasestorage.app",
-      messagingSenderId: "1066836195707",
-      appId: "1:1066836195707:web:153c8721f8cf0510af65de",
-      measurementId: "G-SLZXLRZMCG"
-    };
-
-    // Init
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-
-    // UI helpers
-    const $ = (sel) => document.querySelector(sel);
-    const tbody = document.querySelector('#leadTable tbody');
-    const overlay = $('#authOverlay');
-    const userEmail = $('#userEmail');
-    const authMsg = $('#authMsg');
-    const emailInput = $('#emailInput');
-
-    function fmtDate(ts){
-      if (!ts) return '';
-      const d = ts.toDate ? ts.toDate() : new Date(ts);
-      if (isNaN(d.getTime())) return '';
-      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
-    }
-    function escapeHtml(s){
-      return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]));
-    }
-
-    // AUTH
-    const provider = new GoogleAuthProvider();
-
-    // Redirect-result verwerken ná terugkeer van Google
-    getRedirectResult(auth).catch((e) => {
-      if (authMsg) authMsg.textContent = (e?.code ? `${e.code}: ` : '') + (e?.message || 'Login fout');
-      console.error(e);
-    });
-
-    // Google login met redirect (omzeilt popup block)
-    document.querySelector('#btnGoogleLogin').addEventListener('click', async () => {
-      try { await signInWithRedirect(auth, provider); }
-      catch(e){ if (authMsg) authMsg.textContent = (e?.code? e.code+': ' : '') + (e?.message||'Google login mislukt'); }
-    });
-
-    // Wachtwoordloze e‑mail link versturen
-    document.querySelector('#btnEmailLink').addEventListener('click', async () => {
-      if (authMsg) authMsg.textContent = '';
-      const btn = document.querySelector('#btnEmailLink');
-      const email = (emailInput?.value || '').trim();
-      if (!email){ if (authMsg) authMsg.textContent = 'Vul een geldig e-mailadres in.'; return; }
-
-      // Disable + spinner text zodat UI niet 'vast' voelt
-      if (btn){ btn.disabled = true; const old = btn.textContent; btn.textContent = 'Bezig…';
-        try{
-          // Gebruik de huidige live URL als return URL (GitHub Pages subpaths OK)
-          const backUrl = new URL(window.location.href); backUrl.search=''; backUrl.hash='';
-          const actionCodeSettings = { url: backUrl.toString(), handleCodeInApp: true };
-
-          await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-          window.localStorage.setItem('emailForSignIn', email);
-          if (authMsg) authMsg.textContent = 'Link verstuurd. Check je e‑mail en open de link op dit apparaat.';
-        }catch(e){
-          console.error(e);
-          if (authMsg) authMsg.textContent = (e?.code? e.code+': ' : '') + (e?.message || 'Versturen van link mislukt');
-          // Veelvoorkomend: auth/operation-not-allowed (provider uit), auth/unauthorized-domain (domain niet geautoriseerd), auth/invalid-continue-uri (return URL niet toegestaan)
-        } finally {
-          btn.disabled = false; btn.textContent = 'Stuur login‑link';
-        }
-      }
-    });
-
-    // E‑maillink afhandelen als we via link landen
-    (async function handleEmailLink(){
+    // ===== DIAGNOSTICS =====
+    $('#btnTestRead').addEventListener('click', async ()=>{
+      clearErr(); diagOut.innerHTML='';
       try{
-        if (isSignInWithEmailLink(auth, window.location.href)){
-          let email = window.localStorage.getItem('emailForSignIn');
-          if (!email){ email = window.prompt('Vul je e-mailadres in om in te loggen'); }
-          await signInWithEmailLink(auth, email, window.location.href);
-          window.localStorage.removeItem('emailForSignIn');
-        }
-      } catch(e){ if (authMsg) authMsg.textContent = (e?.code? e.code+': ' : '') + (e?.message || 'Inloggen via e‑mail mislukt'); }
-    })();
-
-    // Auth-state → app tonen/verbergen
-    let unsub = null;
-    let currentUser = null;
-    onAuthStateChanged(auth, async (user) => {
-      currentUser = user;
-      if (!user){
-        userEmail.textContent = '';
-        document.querySelector('#authOverlay').style.display = 'flex';
-        clearTable();
-        if (unsub) { unsub(); unsub = null; }
-        return;
-      }
-      document.querySelector('#authOverlay').style.display = 'none';
-      userEmail.textContent = user.email || '';
-      startLiveQuery();
+        const snap = await getDocs(query(collection(db,'leads'), limit(3)));
+        diagOut.innerHTML = `<div class="ok">Read OK – ${snap.size} docs</div>`;
+      }catch(e){ showErr(e); }
     });
-
-    // DATA (Firestore)
-    async function startLiveQuery(){
-      if (unsub) { unsub(); unsub = null; }
-      const stage = document.querySelector('#stageFilter').value;
-      const colRef = collection(db, 'leads');
-      const baseQ = stage ? query(colRef, where('stage','==',stage), orderBy('created_at','desc'))
-                          : query(colRef, orderBy('created_at','desc'));
-      unsub = onSnapshot(baseQ, (snap) => {
-        const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        renderTable(rows);
-      });
-    }
-
-    function clearTable(){ tbody.innerHTML=''; document.querySelector('#emptyState').style.display='block'; }
-
-    function renderTable(rows){
-      const term = document.querySelector('#search').value.trim().toLowerCase();
-      const filtered = term ? rows.filter(r => {
-        return ['name','company','email','phone','notes']
-          .some(k => (r[k]||'').toString().toLowerCase().includes(term));
-      }) : rows;
-
-      tbody.innerHTML = '';
-      if (!filtered.length){ document.querySelector('#emptyState').style.display='block'; return; }
-      document.querySelector('#emptyState').style.display='none';
-
-      for (const r of filtered){
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${fmtDate(r.created_at)}</td>
-          <td><strong>${escapeHtml(r.name||'')}</strong></td>
-          <td>${escapeHtml(r.company||'')}</td>
-          <td>${escapeHtml(r.email||'')}</td>
-          <td>${escapeHtml(r.phone||'')}</td>
-          <td>${escapeHtml(r.stage||'')}</td>
-          <td>${escapeHtml(r.notes||'')}</td>
-          <td class="actions">
-            <button class="secondary" data-edit="${r.id}">Bewerk</button>
-            <button class="danger" data-del="${r.id}">Verwijder</button>
-          </td>`;
-        tbody.appendChild(tr);
-      }
-    }
-
-    // Form helpers
-    function showForm(edit=false){ document.querySelector('#formCard').classList.remove('hidden'); document.querySelector('#formTitle').textContent = edit ? 'Lead bewerken' : 'Nieuwe lead'; }
-    function hideForm(){ document.querySelector('#formCard').classList.add('hidden'); clearForm(); }
-    function clearForm(){
-      document.querySelector('#f_id').value='';
-      document.querySelector('#f_name').value='';
-      document.querySelector('#f_company').value='';
-      document.querySelector('#f_email').value='';
-      document.querySelector('#f_phone').value='';
-      document.querySelector('#f_stage').value='Nieuw';
-      document.querySelector('#f_notes').value='';
-    }
-
-    async function saveLead(){
-      const id = document.querySelector('#f_id').value;
-      const payload = {
-        name: document.querySelector('#f_name').value.trim(),
-        company: document.querySelector('#f_company').value.trim() || null,
-        email: document.querySelector('#f_email').value.trim() || null,
-        phone: document.querySelector('#f_phone').value.trim() || null,
-        stage: document.querySelector('#f_stage').value,
-        notes: document.querySelector('#f_notes').value.trim() || null,
-        created_at: serverTimestamp(),
-        created_by: currentUser ? currentUser.uid : null
-      };
-      if (!payload.name){ alert('Naam is verplicht'); return; }
-
-      if (!id){
-        await addDoc(collection(db,'leads'), payload);
-      } else {
-        const upd = { ...payload };
-        delete upd.created_at; // behoud oorspronkelijke created_at
-        await updateDoc(doc(db,'leads', id), upd);
-      }
-      hideForm();
-    }
-
-    async function editLead(id){
-      const snap = await getDocs(query(collection(db,'leads')));
-      const found = snap.docs.find(d => d.id === id);
-      if (!found){ alert('Lead niet gevonden'); return; }
-      const r = { id: found.id, ...found.data() };
-      document.querySelector('#f_id').value = r.id;
-      document.querySelector('#f_name').value = r.name || '';
-      document.querySelector('#f_company').value = r.company || '';
-      document.querySelector('#f_email').value = r.email || '';
-      document.querySelector('#f_phone').value = r.phone || '';
-      document.querySelector('#f_stage').value = r.stage || 'Nieuw';
-      document.querySelector('#f_notes').value = r.notes || '';
-      showForm(true);
-    }
-
-    async function removeLead(id){
-      if (!confirm('Verwijderen? Dit kan niet ongedaan worden gemaakt.')) return;
-      await deleteDoc(doc(db,'leads', id));
-    }
-
-    // Events
-    document.querySelector('#btnNew').addEventListener('click', () => { clearForm(); showForm(false); });
-    document.querySelector('#btnCancel').addEventListener('click', hideForm);
-    document.querySelector('#btnSave').addEventListener('click', saveLead);
-    document.querySelector('#btnRefresh').addEventListener('click', startLiveQuery);
-    document.querySelector('#search').addEventListener('input', () => { startLiveQuery(); });
-    document.querySelector('#stageFilter').addEventListener('change', startLiveQuery);
-
-    // Delegated actions (edit/delete)
-    tbody.addEventListener('click', (ev) => {
-      const t = ev.target;
-      if (t.matches('[data-edit]')) editLead(t.getAttribute('data-edit'));
-      if (t.matches('[data-del]')) removeLead(t.getAttribute('data-del'));
+    $('#btnTestQuery').addEventListener('click', async ()=>{
+      clearErr(); diagOut.innerHTML='';
+      try{
+        await getDocs(query(collection(db,'leads'), orderBy('created_at','desc'), limit(1)));
+        diagOut.innerHTML = `<div class="ok">Query orderBy(created_at) OK</div>`;
+      }catch(e){ showErr(e); }
     });
-
-    // Logout
-    document.querySelector('#btnLogout').addEventListener('click', async () => { await signOut(auth); });
   </script>
 </body>
 </html>
