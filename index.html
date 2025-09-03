@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Leads CRM – Firebase</title>
+  <title>Leads CRM – Firebase (Email Link + Google Redirect)</title>
   <style>
     :root{ --bg:#f6f7fb; --card:#fff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --brand:#0ea5a3; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -29,17 +29,25 @@
     .actions{display:flex;gap:6px}
     .hidden{display:none}
     /* Auth overlay */
-    #authOverlay{position:fixed;inset:0;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;z-index:10}
-    #authCard{max-width:420px;width:92%;text-align:center}
+    #authOverlay{position:fixed;inset:0;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;z-index:10}
+    #authCard{max-width:520px;width:92%;text-align:center}
   </style>
 </head>
 <body>
-  <div id="authOverlay" class="hidden">
+  <!-- AUTH OVERLAY -->
+  <div id="authOverlay">
     <div id="authCard" class="card">
       <h2 style="margin-top:0">Inloggen vereist</h2>
-      <p class="muted">Log in om leads te bekijken en te bewerken.</p>
-      <div class="row" style="justify-content:center;margin-top:8px">
-        <button id="btnGoogleLogin">Log in met Google</button>
+      <p class="muted">Log in met je e-mail (wachtwoordloos) of met Google.</p>
+      <div class="row" style="flex-direction:column;gap:10px;align-items:stretch;max-width:480px;margin:0 auto">
+        <div class="row" style="gap:8px">
+          <input id="emailInput" type="email" placeholder="jij@voorbeeld.nl" style="flex:1" />
+          <button id="btnEmailLink">Stuur login‑link</button>
+        </div>
+        <div class="row" style="justify-content:center">
+          <button id="btnGoogleLogin">Log in met Google</button>
+        </div>
+        <div class="muted" id="authMsg" style="min-height:18px"></div>
       </div>
     </div>
   </div>
@@ -130,10 +138,33 @@
   <script type="module">
     // ===== Firebase v10 (modular) via CDN =====
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
-    import { getFirestore, collection, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, orderBy, where, doc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithRedirect,
+      getRedirectResult,
+      signOut,
+      onAuthStateChanged,
+      sendSignInLinkToEmail,
+      isSignInWithEmailLink,
+      signInWithEmailLink
+    } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
+    import {
+      getFirestore,
+      collection,
+      addDoc,
+      updateDoc,
+      deleteDoc,
+      onSnapshot,
+      serverTimestamp,
+      query,
+      orderBy,
+      where,
+      doc,
+      getDocs
+    } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
 
-    // ---- 1) VUL JE EIGEN FIREBASE CONFIG HIER IN ----
+    // ---- Firebase CONFIG (jouw project) ----
     const firebaseConfig = {
       apiKey: "AIzaSyDWjt0YeuEhUCMMOKToGUhjq21K8HlZ8Fk",
       authDomain: "rock-f5937.firebaseapp.com",
@@ -154,6 +185,8 @@
     const tbody = document.querySelector('#leadTable tbody');
     const overlay = $('#authOverlay');
     const userEmail = $('#userEmail');
+    const authMsg = $('#authMsg');
+    const emailInput = $('#emailInput');
 
     function show(el){ el.classList.remove('hidden'); }
     function hide(el){ el.classList.add('hidden'); }
@@ -168,31 +201,75 @@
       return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]));
     }
 
-    // Auth
+    // AUTH
     const provider = new GoogleAuthProvider();
-    $('#btnGoogleLogin').addEventListener('click', async () => {
-      await signInWithPopup(auth, provider);
+
+    // 2) Redirect-result verwerken ná terugkeer van Google
+    getRedirectResult(auth).catch((e) => {
+      if (authMsg) authMsg.textContent = (e?.code ? `${e.code}: ` : '') + (e?.message || 'Login fout');
+      console.error(e);
     });
-    $('#btnLogout').addEventListener('click', async () => { await signOut(auth); });
 
-    let unsub = null; // snapshot unsub function
+    // 3) Google login met redirect (omzeilt popup block)
+    $('#btnGoogleLogin').addEventListener('click', async () => {
+      try { await signInWithRedirect(auth, provider); }
+      catch(e){ if (authMsg) authMsg.textContent = (e?.code? e.code+': ' : '') + (e?.message||'Google login mislukt'); }
+    });
+
+    // 4) Wachtwoordloze e‑mail link versturen
+    $('#btnEmailLink').addEventListener('click', async () => {
+      if (authMsg) authMsg.textContent = '';
+      const email = (emailInput?.value || '').trim();
+      if (!email){ if (authMsg) authMsg.textContent = 'Vul een geldig e-mailadres in.'; return; }
+
+      // Gebruik de huidige live URL (werkt voor GitHub Pages subpaths)
+      const backUrl = new URL(window.location.href);
+      // Strip query/hash zodat we schoon terugkomen op dezelfde pagina
+      backUrl.search = '';
+      backUrl.hash = '';
+
+      const actionCodeSettings = {
+        url: backUrl.toString(),
+        handleCodeInApp: true
+        // Voeg je domein toe bij Auth → Settings → Authorized domains (bv. stayfuntaxcol.github.io)
+      };
+      try{
+        await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+        window.localStorage.setItem('emailForSignIn', email);
+        if (authMsg) authMsg.textContent = 'Link verstuurd. Check je e‑mail en open de link op dit apparaat.';
+      }catch(e){ if (authMsg) authMsg.textContent = (e?.code? e.code+': ' : '') + (e?.message || 'Versturen van link mislukt'); }
+    });
+
+    // 5) E‑maillink afhandelen als we via link landen
+    (async function handleEmailLink(){
+      try{
+        if (isSignInWithEmailLink(auth, window.location.href)){
+          let email = window.localStorage.getItem('emailForSignIn');
+          if (!email){ email = window.prompt('Vul je e-mailadres in om in te loggen'); }
+          await signInWithEmailLink(auth, email, window.location.href);
+          window.localStorage.removeItem('emailForSignIn');
+        }
+      } catch(e){ if (authMsg) authMsg.textContent = (e?.code? e.code+': ' : '') + (e?.message || 'Inloggen via e‑mail mislukt'); }
+    })();
+
+    // 6) Auth-state → app tonen/verbergen
+    let unsub = null;
     let currentUser = null;
-
     onAuthStateChanged(auth, async (user) => {
       currentUser = user;
       if (!user){
         userEmail.textContent = '';
-        show(overlay);
+        overlay.classList.remove('hidden');
         clearTable();
         if (unsub) { unsub(); unsub = null; }
         return;
       }
-      hide(overlay);
+      overlay.classList.add('hidden');
       userEmail.textContent = user.email || '';
       startLiveQuery();
     });
 
-    // Live query (stage filter). Search is client-side.
+    // DATA (Firestore)
     async function startLiveQuery(){
       if (unsub) { unsub(); unsub = null; }
       const stage = $('#stageFilter').value;
@@ -237,79 +314,4 @@
     }
 
     // Form helpers
-    function showForm(edit=false){ show($('#formCard')); $('#formTitle').textContent = edit ? 'Lead bewerken' : 'Nieuwe lead'; }
-    function hideForm(){ hide($('#formCard')); clearForm(); }
-    function clearForm(){
-      $('#f_id').value='';
-      $('#f_name').value='';
-      $('#f_company').value='';
-      $('#f_email').value='';
-      $('#f_phone').value='';
-      $('#f_stage').value='Nieuw';
-      $('#f_notes').value='';
-    }
-
-    async function saveLead(){
-      const id = $('#f_id').value;
-      const payload = {
-        name: $('#f_name').value.trim(),
-        company: $('#f_company').value.trim() || null,
-        email: $('#f_email').value.trim() || null,
-        phone: $('#f_phone').value.trim() || null,
-        stage: $('#f_stage').value,
-        notes: $('#f_notes').value.trim() || null,
-        created_at: serverTimestamp(),
-        created_by: currentUser ? currentUser.uid : null
-      };
-      if (!payload.name){ alert('Naam is verplicht'); return; }
-
-      if (!id){
-        await addDoc(collection(db,'leads'), payload);
-      } else {
-        const upd = { ...payload };
-        delete upd.created_at; // laat created_at staan
-        await updateDoc(doc(db,'leads', id), upd);
-      }
-      hideForm();
-    }
-
-    async function editLead(id){
-      // Geen aparte fetch nodig; we lezen laatste snapshot tabelwaarden in
-      // Simpelste: haal eenmalig document op
-      const q = query(collection(db,'leads'));
-      const snap = await getDocs(q);
-      const found = snap.docs.find(d => d.id === id);
-      if (!found){ alert('Lead niet gevonden'); return; }
-      const r = { id: found.id, ...found.data() };
-      $('#f_id').value = r.id;
-      $('#f_name').value = r.name || '';
-      $('#f_company').value = r.company || '';
-      $('#f_email').value = r.email || '';
-      $('#f_phone').value = r.phone || '';
-      $('#f_stage').value = r.stage || 'Nieuw';
-      $('#f_notes').value = r.notes || '';
-      showForm(true);
-    }
-
-    async function removeLead(id){
-      if (!confirm('Verwijderen? Dit kan niet ongedaan worden gemaakt.')) return;
-      await deleteDoc(doc(db,'leads', id));
-    }
-
-    // Events
-    $('#btnNew').addEventListener('click', () => { clearForm(); showForm(false); });
-    $('#btnCancel').addEventListener('click', hideForm);
-    $('#btnSave').addEventListener('click', saveLead);
-    $('#btnRefresh').addEventListener('click', startLiveQuery);
-    $('#search').addEventListener('input', () => { startLiveQuery(); });
-    $('#stageFilter').addEventListener('change', startLiveQuery);
-
-    // Delegated actions (edit/delete)
-    tbody.addEventListener('click', (ev) => {
-      const t = ev.target;
-      if (t.matches('[data-edit]')) editLead(t.getAttribute('data-edit'));
-      if (t.matches('[data-del]')) removeLead(t.getAttribute('data-del'));
-    });
-  </script>
-</body>
-</html>
+    function showForm(edit=false){ overlay.classList.add('hidden'); document.querySelector('#formCard').classList.remove('hidden'); $('#form
