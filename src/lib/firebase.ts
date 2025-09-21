@@ -1,25 +1,20 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { initializeFirestore, getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 
-const cfg = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+const firebaseConfig = {
+  apiKey: "AIzaSyDWjt0YeuEhUCMMOKToGUhjq21K8HlZ8Fk",
+  authDomain: "rock-f5937.firebaseapp.com",
+  projectId: "rock-f5937",
+  storageBucket: "rock-f5937.appspot.com",
+  messagingSenderId: "1066836195707",
+  appId: "1:1066836195707:web:153c8721f8cf0510af65de",
+  measurementId: "G-SLZXLRZMCG"
 };
 
-const app = initializeApp(cfg);
-const auth = getAuth(app);
-setPersistence(auth, browserLocalPersistence);
+console.log("FIREBASE CONFIG @runtime", { apiKey: firebaseConfig.apiKey, projectId: firebaseConfig.projectId });
 
-initializeFirestore(app, { ignoreUndefinedProperties: true });
-const db = getFirestore(app);
-
-// Offline persistence (no crash in private mode)
-enableIndexedDbPersistence(db).catch(()=>{});
-
-export { app, auth, db };
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+setPersistence(auth, browserLocalPersistence).catch(() => {});
+export const db = getFirestore(app);

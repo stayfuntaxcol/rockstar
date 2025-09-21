@@ -1,0 +1,49 @@
+src/features/auth/SignIn.tsx(18,20): error TS1127: Invalid character.
+src/features/auth/SignIn.tsx(18,21): error TS1003: Identifier expected.
+src/features/auth/SignIn.tsx(18,84): error TS1002: Unterminated string literal.
+src/features/auth/SignIn.tsx(19,11): error TS1005: ';' expected.
+src/features/auth/SignIn.tsx(19,21): error TS1127: Invalid character.
+src/features/auth/SignIn.tsx(19,61): error TS1002: Unterminated string literal.
+src/features/auth/SignIn.tsx(20,13): error TS1005: ';' expected.
+src/features/auth/SignIn.tsx(20,31): error TS1005: ';' expected.
+src/features/auth/SignIn.tsx(20,41): error TS1127: Invalid character.
+src/features/auth/SignIn.tsx(20,55): error TS1002: Unterminated string literal.
+src/features/auth/SignIn.tsx(21,16): error TS1005: ';' expected.
+src/features/auth/SignIn.tsx(21,26): error TS1127: Invalid character.
+src/features/auth/SignIn.tsx(21,135): error TS1002: Unterminated string literal.
+src/features/auth/SignIn.tsx(22,16): error TS1005: ';' expected.
+src/features/auth/SignIn.tsx(22,26): error TS1127: Invalid character.
+src/features/auth/SignIn.tsx(22,152): error TS1002: Unterminated string literal.
+src/features/auth/SignIn.tsx(23,32): error TS1127: Invalid character.
+src/features/auth/SignIn.tsx(23,33): error TS1003: Identifier expected.
+src/features/auth/SignIn.tsx(23,69): error TS1002: Unterminated string literal.
+src/features/auth/SignIn.tsx(24,17): error TS1005: ';' expected.
+src/features/auth/SignIn.tsx(24,27): error TS1127: Invalid character.
+src/features/auth/SignIn.tsx(24,103): error TS1002: Unterminated string literal.
+src/features/auth/SignIn.tsx(25,7): error TS1128: Declaration or statement expected.
+src/features/auth/SignIn.tsx(26,5): error TS1109: Expression expected.
+src/features/auth/SignIn.tsx(27,3): error TS1109: Expression expected.
+src/features/auth/SignIn.tsx(29,1): error TS1005: '}' expected.
+src/features/pipeline/Pipeline.tsx(30,11): error TS17008: JSX element 'div' has no corresponding closing tag.
+src/features/pipeline/Pipeline.tsx(45,6): error TS17008: JSX element 'div' has no corresponding closing tag.
+src/features/pipeline/Pipeline.tsx(46,8): error TS17008: JSX element 'table' has no corresponding closing tag.
+src/features/pipeline/Pipeline.tsx(47,10): error TS17008: JSX element 'thead' has no corresponding closing tag.
+src/features/pipeline/Pipeline.tsx(48,12): error TS17008: JSX element 'tr' has no corresponding closing tag.
+src/features/pipeline/Pipeline.tsx(50,23): error TS1003: Identifier expected.
+src/features/pipeline/Pipeline.tsx(59,5): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+src/features/pipeline/Pipeline.tsx(59,20): error TS1003: Identifier expected.
+src/features/pipeline/Pipeline.tsx(60,1): error TS1005: '>' expected.
+src/features/pipeline/Pipeline.tsx(60,10): error TS1005: '...' expected.
+src/features/pipeline/Pipeline.tsx(60,56): error TS1003: Identifier expected.
+src/features/pipeline/Pipeline.tsx(68,3): error TS1109: Expression expected.
+src/features/pipeline/Pipeline.tsx(68,41): error TS1003: Identifier expected.
+src/features/pipeline/Pipeline.tsx(68,47): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+src/features/pipeline/Pipeline.tsx(71,16): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+src/features/pipeline/Pipeline.tsx(72,5): error TS1109: Expression expected.
+src/features/pipeline/Pipeline.tsx(72,45): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+src/features/pipeline/Pipeline.tsx(72,58): error TS1005: '}' expected.
+src/features/pipeline/Pipeline.tsx(72,76): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/features/pipeline/Pipeline.tsx(73,16): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+src/features/pipeline/Pipeline.tsx(74,3): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/features/pipeline/Pipeline.tsx(94,1): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/features/pipeline/Pipeline.tsx(95,1): error TS1005: '</' expected.

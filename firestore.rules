@@ -1,1 +1,65 @@
-// rules will be added in STEP 2
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // ===== Helper: roles via /roles/{uid} =====
+    function hasRole(role) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/roles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/roles/$(request.auth.uid)).data[role] == true;
+    }
+
+    // ===== Bootstrap: gebruiker mag EIGEN roles-doc aanmaken/bijwerken =====
+    match /roles/{uid} {
+      // Iedereen die ingelogd is mag ZIJN EIGEN doc lezen/schrijven
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      // Admins mogen ALLES lezen/schrijven (zodra een admin bestaat)
+      allow read, write: if hasRole('admin');
+    }
+
+    // ===== Referentielijsten (alleen lezen voor ingelogd) =====
+    match /countries/{doc} { allow read: if request.auth != null; allow write: if hasRole('admin'); }
+    match /sectors/{doc}   { allow read: if request.auth != null; allow write: if hasRole('admin'); }
+    match /tags/{doc}      { allow read: if request.auth != null; allow write: if hasRole('admin'); }
+
+    // ===== Kerncollecties =====
+    // Accounts (prospects) – iedereen met 'viewer' leest, editten door rm/lead/admin
+    match /accounts/{id} {
+      allow read: if hasRole('viewer') || hasRole('rm') || hasRole('lead') || hasRole('admin');
+      allow create, update: if hasRole('rm') || hasRole('lead') || hasRole('admin');
+      allow delete: if hasRole('admin');
+    }
+
+    // Contacts (PII) – restrictiever
+    match /contacts/{id} {
+      allow read: if hasRole('rm') || hasRole('lead') || hasRole('admin');
+      allow create, update: if hasRole('rm') || hasRole('lead') || hasRole('admin');
+      allow delete: if hasRole('admin');
+    }
+
+    // Opportunities
+    match /opportunities/{id} {
+      allow read: if hasRole('viewer') || hasRole('rm') || hasRole('lead') || hasRole('admin');
+      allow create: if hasRole('rm') || hasRole('lead') || hasRole('admin');
+      allow update: if hasRole('lead') || hasRole('admin');
+      allow delete: if hasRole('admin');
+    }
+
+    // Activities (notes/calls/meetings)
+    match /activities/{id} {
+      allow read: if hasRole('viewer') || hasRole('rm') || hasRole('lead') || hasRole('admin');
+      allow create, update: if hasRole('rm') || hasRole('lead') || hasRole('admin');
+      allow delete: if hasRole('admin');
+    }
+
+    // RPA
+    match /rpa/{id} {
+      allow read: if hasRole('viewer') || hasRole('rm') || hasRole('lead') || hasRole('admin');
+      allow create, update: if hasRole('rm') || hasRole('lead') || hasRole('admin');
+      allow delete: if hasRole('admin');
+    }
+
+    // Alles anders dicht
+    match /{document=**} { allow read, write: if false; }
+  }
+}
