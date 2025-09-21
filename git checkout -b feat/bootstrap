@@ -1,0 +1,4 @@
+npm create vite@latest . -- --template react-ts
+npm i firebase react-router-dom
+npm i -D tailwindcss postcss autoprefixer @tailwindcss/forms @tailwindcss/typography
+npx tailwindcss init -p
