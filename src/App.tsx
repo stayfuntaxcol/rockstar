@@ -1,5 +1,5 @@
-import { HashRouter, Routes, Route } from "react-router-dom";
-import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
+import { , Routes, Route } from "react-router-dom";
+import { , Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./lib/firebase";
@@ -19,7 +19,7 @@ export default function App(){
   if(!user) return <SignIn/>;
 
   return (
-    <HashRouter>
+    <>
       <div className="min-h-screen bg-bg text-ink">
         <header className="sticky top-0 bg-white/80 backdrop-blur border-b">
           <div className="max-w-5xl mx-auto p-3 font-semibold">ROCK CRM</div>
@@ -33,6 +33,6 @@ export default function App(){
         </Routes>
         </main>
       </div>
-    </HashRouter>
+    </>
   );
 }
