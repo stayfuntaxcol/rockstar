@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./lib/firebase";
@@ -18,7 +19,7 @@ export default function App(){
   if(!user) return <SignIn/>;
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <div className="min-h-screen bg-bg text-ink">
         <header className="sticky top-0 bg-white/80 backdrop-blur border-b">
           <div className="max-w-5xl mx-auto p-3 font-semibold">ROCK CRM</div>
@@ -27,9 +28,11 @@ export default function App(){
           <Routes>
             <Route path="/" element={<Navigate to="/pipeline" replace/>}/>
             <Route path="/pipeline" element={<Pipeline/>}/>
-          </Routes>
+            <Route path="/contacts" element={<Contacts/>}/>
+          <Route path="/signin" element={<SignIn/>}/>
+        </Routes>
         </main>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   );
 }

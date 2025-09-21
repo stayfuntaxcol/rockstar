@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { getAuth, setPersistence, browserLocalPersistence, connectAuthEmulator } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -12,9 +12,15 @@ const firebaseConfig = {
   measurementId: "G-SLZXLRZMCG"
 };
 
-console.log("FIREBASE CONFIG @runtime", { apiKey: firebaseConfig.apiKey, projectId: firebaseConfig.projectId });
-
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 setPersistence(auth, browserLocalPersistence).catch(() => {});
 export const db = getFirestore(app);
+
+// --- Optioneel: Auth Emulator in dev ---
+// Zet in .env.local: VITE_USE_AUTH_EMULATOR=1  (alleen als je emulator draait)
+const useEmu = import.meta.env.MODE === 'development' && import.meta.env.VITE_USE_AUTH_EMULATOR === '1';
+if (useEmu && typeof window !== 'undefined' && !(window as any).__AUTH_EMU_CONNECTED__) {
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  (window as any).__AUTH_EMU_CONNECTED__ = true;
+}
